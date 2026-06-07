@@ -1,0 +1,456 @@
+    // Developed by KSA and ChatGPT4o, 9-25-2024
+    // Fixed and enhanced by KSA and Claude, 4-11-2026 (v2)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Lorenz Attractor Simulation with RK4 - Two Atmospheres</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #controls {
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin: 10px 0;
+        }
+        .control-group label {
+            display: inline-block;
+            width: 180px;
+        }
+        #plot {
+            width: 100%;
+            height: 600px;
+        }
+        .button-group {
+            margin: 15px 0;
+        }
+        .button-group button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        #simulateButton { background-color: #4CAF50; color: white; border: none; border-radius: 4px; }
+        #pauseButton { background-color: #FF9800; color: white; border: none; border-radius: 4px; }
+        #clearButton { background-color: #f44336; color: white; border: none; border-radius: 4px; }
+        .button-group button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .atmosphere {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .atmosphere h3 {
+            margin-top: 0;
+        }
+        #status-bar {
+            font-size: 14px;
+            margin: 10px 0;
+            padding: 8px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        #mouse-help {
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Interactive Lorenz Attractor Simulation with RK4 - Two Atmospheres</h1>
+
+<div id="controls">
+    <div class="atmosphere">
+        <h3>Atmosphere 1 (Blue)</h3>
+        <div class="control-group">
+            <label for="sigma1">Sigma (&sigma;):</label>
+            <input type="number" id="sigma1" value="10" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="beta1">Beta (&beta;):</label>
+            <input type="number" id="beta1" value="2.6666667" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="rho1">Rho (&rho;):</label>
+            <input type="number" id="rho1" value="28" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="x01">Initial x:</label>
+            <input type="number" id="x01" value="1" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="y01">Initial y:</label>
+            <input type="number" id="y01" value="1" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="z01">Initial z:</label>
+            <input type="number" id="z01" value="1" step="0.1">
+        </div>
+    </div>
+
+    <div class="atmosphere">
+        <h3>Atmosphere 2 (Red)</h3>
+        <div class="control-group">
+            <label for="sigma2">Sigma (&sigma;):</label>
+            <input type="number" id="sigma2" value="10" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="beta2">Beta (&beta;):</label>
+            <input type="number" id="beta2" value="2.6666667" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="rho2">Rho (&rho;):</label>
+            <input type="number" id="rho2" value="28" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="x02">Initial x:</label>
+            <input type="number" id="x02" value="1.01" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="y02">Initial y:</label>
+            <input type="number" id="y02" value="1.01" step="0.1">
+        </div>
+        <div class="control-group">
+            <label for="z02">Initial z:</label>
+            <input type="number" id="z02" value="1.01" step="0.1">
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label for="dt">Time Step (&Delta;t):</label>
+        <input type="number" id="dt" value="0.01" step="0.001">
+        <span id="substepInfo" style="font-size:12px; color:#666;"></span>
+    </div>
+    <div class="control-group">
+        <label for="numSteps">Number of Steps:</label>
+        <input type="number" id="numSteps" value="10000" step="1000">
+    </div>
+    <div class="control-group">
+        <label for="animSpeed">Animation Speed:</label>
+        <input type="range" id="animSpeed" min="1" max="200" value="50">
+        <span id="animSpeedLabel">50 steps/frame</span>
+    </div>
+
+    <div class="button-group">
+        <button id="simulateButton">Simulate</button>
+        <button id="pauseButton" disabled>Pause</button>
+        <button id="clearButton">Clear</button>
+    </div>
+</div>
+
+<div id="status-bar">Ready. Set parameters and click Simulate.</div>
+<div id="mouse-help">3D controls: Drag to orbit | Scroll to zoom | Shift+Drag to pan | Double-click to reset view</div>
+<div id="plot"></div>
+
+<script>
+    // Maximum internal integration step for accuracy/smoothness
+    const MAX_INTERNAL_DT = 0.005;
+
+    // Animation state
+    let animationId = null;
+    let isPaused = false;
+    let allData1 = null;
+    let allData2 = null;
+    let currentStep = 0;
+    let totalSteps = 0;
+    let startTime = null;
+    let simDt = 0;
+
+    // Speed slider
+    const speedSlider = document.getElementById('animSpeed');
+    const speedLabel = document.getElementById('animSpeedLabel');
+    speedSlider.addEventListener('input', function() {
+        speedLabel.textContent = this.value + ' steps/frame';
+    });
+
+    // RK4 single step: advances state by dt, returns new [x, y, z]
+    function rk4Step(sigma, beta, rho, x, y, z, dt) {
+        let k1x = sigma * (y - x);
+        let k1y = x * (rho - z) - y;
+        let k1z = x * y - beta * z;
+
+        let xk2 = x + 0.5 * k1x * dt;
+        let yk2 = y + 0.5 * k1y * dt;
+        let zk2 = z + 0.5 * k1z * dt;
+        let k2x = sigma * (yk2 - xk2);
+        let k2y = xk2 * (rho - zk2) - yk2;
+        let k2z = xk2 * yk2 - beta * zk2;
+
+        let xk3 = x + 0.5 * k2x * dt;
+        let yk3 = y + 0.5 * k2y * dt;
+        let zk3 = z + 0.5 * k2z * dt;
+        let k3x = sigma * (yk3 - xk3);
+        let k3y = xk3 * (rho - zk3) - yk3;
+        let k3z = xk3 * yk3 - beta * zk3;
+
+        let xk4 = x + k3x * dt;
+        let yk4 = y + k3y * dt;
+        let zk4 = z + k3z * dt;
+        let k4x = sigma * (yk4 - xk4);
+        let k4y = xk4 * (rho - zk4) - yk4;
+        let k4z = xk4 * yk4 - beta * zk4;
+
+        return [
+            x + (dt / 6) * (k1x + 2 * k2x + 2 * k3x + k4x),
+            y + (dt / 6) * (k1y + 2 * k2y + 2 * k3y + k4y),
+            z + (dt / 6) * (k1z + 2 * k2z + 2 * k3z + k4z)
+        ];
+    }
+
+    // Simulate with automatic substeps for smooth curves
+    // User dt controls the simulation time span, but integration
+    // always uses small steps internally for accuracy.
+    function simulateLorenzRK4(sigma, beta, rho, x0, y0, z0, userDt, numSteps) {
+        // Determine substeps: if userDt > MAX_INTERNAL_DT, subdivide
+        let substeps = Math.max(1, Math.ceil(userDt / MAX_INTERNAL_DT));
+        let internalDt = userDt / substeps;
+        let totalPoints = numSteps * substeps;
+
+        let xArr = new Float64Array(totalPoints);
+        let yArr = new Float64Array(totalPoints);
+        let zArr = new Float64Array(totalPoints);
+        xArr[0] = x0; yArr[0] = y0; zArr[0] = z0;
+
+        let cx = x0, cy = y0, cz = z0;
+        for (let i = 1; i < totalPoints; i++) {
+            let result = rk4Step(sigma, beta, rho, cx, cy, cz, internalDt);
+            cx = result[0]; cy = result[1]; cz = result[2];
+            xArr[i] = cx;
+            yArr[i] = cy;
+            zArr[i] = cz;
+        }
+
+        return { x: xArr, y: yArr, z: zArr, substeps: substeps, totalPoints: totalPoints };
+    }
+
+    // Plotly config: only show 3D-relevant toolbar buttons
+    const plotlyConfig = {
+        displaylogo: false,
+        modeBarButtonsToRemove: [
+            'zoom2d', 'pan2d', 'select2d', 'lasso2d',
+            'zoomIn2d', 'zoomOut2d', 'autoScale2d',
+            'hoverClosestCartesian', 'hoverCompareCartesian',
+            'toggleSpikelines'
+        ],
+        modeBarButtonsToAdd: [],
+        scrollZoom: true
+    };
+
+    // Initialize empty plot
+    function initPlot() {
+        let trace1 = {
+            x: [], y: [], z: [],
+            mode: 'lines',
+            line: { width: 2, color: 'blue', shape: 'spline', smoothing: 1.0 },
+            type: 'scatter3d',
+            name: 'Atmosphere 1'
+        };
+
+        let trace2 = {
+            x: [], y: [], z: [],
+            mode: 'lines',
+            line: { width: 2, color: 'red', shape: 'spline', smoothing: 1.0 },
+            type: 'scatter3d',
+            name: 'Atmosphere 2'
+        };
+
+        let start1 = {
+            x: [], y: [], z: [],
+            mode: 'markers',
+            marker: { size: 5, color: 'blue', symbol: 'diamond' },
+            type: 'scatter3d',
+            name: 'Start 1',
+            showlegend: false
+        };
+
+        let start2 = {
+            x: [], y: [], z: [],
+            mode: 'markers',
+            marker: { size: 5, color: 'red', symbol: 'diamond' },
+            type: 'scatter3d',
+            name: 'Start 2',
+            showlegend: false
+        };
+
+        let layout = {
+            title: 'Lorenz Attractor - Two Atmospheres',
+            scene: {
+                xaxis: { title: 'X' },
+                yaxis: { title: 'Y' },
+                zaxis: { title: 'Z' },
+                dragmode: 'orbit'
+            },
+            margin: { l: 0, r: 0, b: 0, t: 50 },
+            legend: { x: 0, y: 1 }
+        };
+
+        Plotly.newPlot('plot', [trace1, trace2, start1, start2], layout, plotlyConfig);
+    }
+
+    // Animate: progressively add points to the plot
+    function animateStep() {
+        let stepsPerFrame = parseInt(speedSlider.value);
+        let end = Math.min(currentStep + stepsPerFrame, totalSteps);
+
+        let x1 = Array.from(allData1.x.slice(currentStep, end));
+        let y1 = Array.from(allData1.y.slice(currentStep, end));
+        let z1 = Array.from(allData1.z.slice(currentStep, end));
+
+        let x2 = Array.from(allData2.x.slice(currentStep, end));
+        let y2 = Array.from(allData2.y.slice(currentStep, end));
+        let z2 = Array.from(allData2.z.slice(currentStep, end));
+
+        Plotly.extendTraces('plot', {
+            x: [x1, x2],
+            y: [y1, y2],
+            z: [z1, z2]
+        }, [0, 1]);
+
+        currentStep = end;
+
+        // Update status bar
+        let elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+        let simTime = (currentStep * simDt).toFixed(2);
+        let pct = ((currentStep / totalSteps) * 100).toFixed(1);
+        document.getElementById('status-bar').textContent =
+            'Step: ' + currentStep + ' / ' + totalSteps +
+            ' (' + pct + '%) | Sim time: ' + simTime +
+            's | Elapsed: ' + elapsed + 's';
+
+        if (currentStep < totalSteps) {
+            animationId = requestAnimationFrame(animateStep);
+        } else {
+            document.getElementById('status-bar').textContent =
+                'Complete. ' + totalSteps + ' points | Sim time: ' + simTime +
+                's | Elapsed: ' + elapsed + 's';
+            document.getElementById('simulateButton').disabled = false;
+            document.getElementById('pauseButton').disabled = true;
+            animationId = null;
+        }
+    }
+
+    // Stop any running animation
+    function stopAnimation() {
+        if (animationId !== null) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
+        isPaused = false;
+    }
+
+    // Clear button
+    document.getElementById('clearButton').addEventListener('click', function() {
+        stopAnimation();
+        currentStep = 0;
+        allData1 = null;
+        allData2 = null;
+        initPlot();
+        document.getElementById('simulateButton').disabled = false;
+        document.getElementById('pauseButton').disabled = true;
+        document.getElementById('pauseButton').textContent = 'Pause';
+        document.getElementById('status-bar').textContent = 'Cleared. Ready for new simulation.';
+        document.getElementById('substepInfo').textContent = '';
+    });
+
+    // Pause/Resume button
+    document.getElementById('pauseButton').addEventListener('click', function() {
+        if (!isPaused) {
+            stopAnimation();
+            isPaused = true;
+            this.textContent = 'Resume';
+            document.getElementById('simulateButton').disabled = false;
+            let simTime = (currentStep * simDt).toFixed(2);
+            document.getElementById('status-bar').textContent =
+                'Paused at step ' + currentStep + ' / ' + totalSteps +
+                ' | Sim time: ' + simTime + 's';
+        } else {
+            isPaused = false;
+            this.textContent = 'Pause';
+            document.getElementById('simulateButton').disabled = true;
+            animationId = requestAnimationFrame(animateStep);
+        }
+    });
+
+    // Simulate button
+    document.getElementById('simulateButton').addEventListener('click', function() {
+        stopAnimation();
+
+        let sigma1 = parseFloat(document.getElementById('sigma1').value);
+        let beta1 = parseFloat(document.getElementById('beta1').value);
+        let rho1 = parseFloat(document.getElementById('rho1').value);
+        let x01 = parseFloat(document.getElementById('x01').value);
+        let y01 = parseFloat(document.getElementById('y01').value);
+        let z01 = parseFloat(document.getElementById('z01').value);
+
+        let sigma2 = parseFloat(document.getElementById('sigma2').value);
+        let beta2 = parseFloat(document.getElementById('beta2').value);
+        let rho2 = parseFloat(document.getElementById('rho2').value);
+        let x02 = parseFloat(document.getElementById('x02').value);
+        let y02 = parseFloat(document.getElementById('y02').value);
+        let z02 = parseFloat(document.getElementById('z02').value);
+
+        let dt = parseFloat(document.getElementById('dt').value);
+        let numSteps = parseInt(document.getElementById('numSteps').value);
+
+        if (isNaN(numSteps) || numSteps <= 0) {
+            alert('Please enter a valid number of steps.');
+            return;
+        }
+        if (isNaN(dt) || dt <= 0) {
+            alert('Please enter a valid time step.');
+            return;
+        }
+
+        document.getElementById('status-bar').textContent = 'Computing ' + numSteps + ' steps for both atmospheres...';
+
+        setTimeout(function() {
+            allData1 = simulateLorenzRK4(sigma1, beta1, rho1, x01, y01, z01, dt, numSteps);
+            allData2 = simulateLorenzRK4(sigma2, beta2, rho2, x02, y02, z02, dt, numSteps);
+
+            // Use the actual internal dt for time display
+            let substeps = allData1.substeps;
+            let internalDt = dt / substeps;
+            simDt = internalDt;
+            totalSteps = allData1.totalPoints;
+            currentStep = 0;
+
+            // Show substep info
+            if (substeps > 1) {
+                document.getElementById('substepInfo').textContent =
+                    '(auto-subdivided: ' + substeps + ' substeps, internal dt=' + internalDt.toFixed(4) + ')';
+            } else {
+                document.getElementById('substepInfo').textContent = '';
+            }
+
+            // Clear and reinitialize the plot
+            initPlot();
+
+            // Mark starting points
+            Plotly.extendTraces('plot', {
+                x: [[x01], [x02]],
+                y: [[y01], [y02]],
+                z: [[z01], [z02]]
+            }, [2, 3]);
+
+            document.getElementById('simulateButton').disabled = true;
+            document.getElementById('pauseButton').disabled = false;
+            document.getElementById('pauseButton').textContent = 'Pause';
+
+            startTime = performance.now();
+            isPaused = false;
+            animationId = requestAnimationFrame(animateStep);
+        }, 50);
+    });
+
+    // Initialize empty plot on load
+    initPlot();
+</script>
+
+</body>
+</html>

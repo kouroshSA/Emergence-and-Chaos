@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Boids - Swarm Intelligence Simulation</title>
+    <style type="text/css">
+      body {
+        margin: 0;
+        background: #282c34;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+      #controls {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(255,255,255,0.92);
+        padding: 15px;
+        border-radius: 8px;
+        width: 260px;
+        z-index: 10;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+      }
+      #controls h2 {
+        margin: 0 0 10px 0;
+        font-size: 15px;
+        color: #333;
+      }
+      #controls h3 {
+        margin: 12px 0 4px 0;
+        font-size: 12px;
+        color: #666;
+        border-top: 1px solid #ddd;
+        padding-top: 8px;
+      }
+      .param {
+        margin: 6px 0;
+      }
+      .param label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #444;
+        margin-bottom: 2px;
+      }
+      .param input[type=range] {
+        width: 100%;
+      }
+      .param .val {
+        font-weight: bold;
+        color: #222;
+      }
+      .toggle {
+        margin: 6px 0;
+        font-size: 12px;
+        color: #444;
+      }
+      .toggle input {
+        margin-right: 6px;
+      }
+      .btn-row {
+        margin-top: 10px;
+        display: flex;
+        gap: 6px;
+      }
+      .btn-row button {
+        flex: 1;
+        padding: 6px;
+        font-size: 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        color: white;
+      }
+      #resetBtn { background: #e94560; }
+      #pauseBtn { background: #FF9800; }
+    </style>
+  </head>
+  <body>
+    <canvas id="boids" width="150" height="150"></canvas>
+
+    <div id="controls">
+      <h2>Boids - Swarm Intelligence</h2>
+
+      <h3>Speed</h3>
+      <div class="param">
+        <label>Simulation Speed <span class="val" id="speedVal">0.5</span></label>
+        <input type="range" id="speedSlider" min="0.1" max="2.0" step="0.1" value="0.5">
+      </div>
+
+      <h3>Behavioral Rules</h3>
+      <div class="param">
+        <label>Coherence (Cohesion) <span class="val" id="cohVal">0.005</span></label>
+        <input type="range" id="cohSlider" min="0" max="0.02" step="0.001" value="0.005">
+      </div>
+      <div class="param">
+        <label>Separation <span class="val" id="sepVal">0.05</span></label>
+        <input type="range" id="sepSlider" min="0" max="0.2" step="0.005" value="0.05">
+      </div>
+      <div class="param">
+        <label>Alignment <span class="val" id="aliVal">0.05</span></label>
+        <input type="range" id="aliSlider" min="0" max="0.2" step="0.005" value="0.05">
+      </div>
+      <div class="param">
+        <label>Visual Range <span class="val" id="visVal">75</span></label>
+        <input type="range" id="visSlider" min="10" max="200" step="5" value="75">
+      </div>
+
+      <h3>Other</h3>
+      <div class="param">
+        <label>Number of Birds <span class="val" id="numVal">100</span></label>
+        <input type="range" id="numSlider" min="10" max="300" step="10" value="100">
+      </div>
+      <div class="param">
+        <label>Separation Distance <span class="val" id="minDistVal">20</span></label>
+        <input type="range" id="minDistSlider" min="5" max="60" step="5" value="20">
+      </div>
+      <div class="param">
+        <label>Speed Limit <span class="val" id="spdLimitVal">15</span></label>
+        <input type="range" id="spdLimitSlider" min="3" max="30" step="1" value="15">
+      </div>
+
+      <h3>Display</h3>
+      <div class="toggle">
+        <label><input type="checkbox" id="trailCheck"> Trace Paths</label>
+      </div>
+
+      <div class="btn-row">
+        <button id="pauseBtn">Pause</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+    </div>
+
+    <script>
+// Based on https://github.com/beneater/boids by Ben Eater
+// Modified to add speed control, parameter sliders, and trace paths
+
+let width = 150;
+let height = 150;
+
+let boids = [];
+let paused = false;
+
+// Slider value bindings
+function bindSlider(sliderId, valId) {
+  const s = document.getElementById(sliderId);
+  const v = document.getElementById(valId);
+  s.addEventListener('input', () => { v.textContent = s.value; });
+}
+bindSlider('speedSlider', 'speedVal');
+bindSlider('cohSlider', 'cohVal');
+bindSlider('sepSlider', 'sepVal');
+bindSlider('aliSlider', 'aliVal');
+bindSlider('visSlider', 'visVal');
+bindSlider('numSlider', 'numVal');
+bindSlider('minDistSlider', 'minDistVal');
+bindSlider('spdLimitSlider', 'spdLimitVal');
+
+function getParams() {
+  return {
+    speedFactor: parseFloat(document.getElementById('speedSlider').value),
+    centeringFactor: parseFloat(document.getElementById('cohSlider').value),
+    avoidFactor: parseFloat(document.getElementById('sepSlider').value),
+    matchingFactor: parseFloat(document.getElementById('aliSlider').value),
+    visualRange: parseFloat(document.getElementById('visSlider').value),
+    numBoids: parseInt(document.getElementById('numSlider').value),
+    minDistance: parseFloat(document.getElementById('minDistSlider').value),
+    speedLimit: parseFloat(document.getElementById('spdLimitSlider').value),
+    drawTrail: document.getElementById('trailCheck').checked,
+  };
+}
+
+function initBoids(n) {
+  boids = [];
+  for (let i = 0; i < n; i++) {
+    boids.push({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      dx: Math.random() * 10 - 5,
+      dy: Math.random() * 10 - 5,
+      history: [],
+    });
+  }
+}
+
+function distance(boid1, boid2) {
+  return Math.sqrt(
+    (boid1.x - boid2.x) * (boid1.x - boid2.x) +
+    (boid1.y - boid2.y) * (boid1.y - boid2.y)
+  );
+}
+
+function sizeCanvas() {
+  const canvas = document.getElementById("boids");
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+}
+
+function keepWithinBounds(boid) {
+  const margin = 200;
+  const turnFactor = 1;
+
+  if (boid.x < margin) boid.dx += turnFactor;
+  if (boid.x > width - margin) boid.dx -= turnFactor;
+  if (boid.y < margin) boid.dy += turnFactor;
+  if (boid.y > height - margin) boid.dy -= turnFactor;
+}
+
+function flyTowardsCenter(boid, p) {
+  let centerX = 0;
+  let centerY = 0;
+  let numNeighbors = 0;
+
+  for (let otherBoid of boids) {
+    if (distance(boid, otherBoid) < p.visualRange) {
+      centerX += otherBoid.x;
+      centerY += otherBoid.y;
+      numNeighbors += 1;
+    }
+  }
+
+  if (numNeighbors) {
+    centerX /= numNeighbors;
+    centerY /= numNeighbors;
+    boid.dx += (centerX - boid.x) * p.centeringFactor;
+    boid.dy += (centerY - boid.y) * p.centeringFactor;
+  }
+}
+
+function avoidOthers(boid, p) {
+  let moveX = 0;
+  let moveY = 0;
+  for (let otherBoid of boids) {
+    if (otherBoid !== boid) {
+      if (distance(boid, otherBoid) < p.minDistance) {
+        moveX += boid.x - otherBoid.x;
+        moveY += boid.y - otherBoid.y;
+      }
+    }
+  }
+  boid.dx += moveX * p.avoidFactor;
+  boid.dy += moveY * p.avoidFactor;
+}
+
+function matchVelocity(boid, p) {
+  let avgDX = 0;
+  let avgDY = 0;
+  let numNeighbors = 0;
+
+  for (let otherBoid of boids) {
+    if (distance(boid, otherBoid) < p.visualRange) {
+      avgDX += otherBoid.dx;
+      avgDY += otherBoid.dy;
+      numNeighbors += 1;
+    }
+  }
+
+  if (numNeighbors) {
+    avgDX /= numNeighbors;
+    avgDY /= numNeighbors;
+    boid.dx += (avgDX - boid.dx) * p.matchingFactor;
+    boid.dy += (avgDY - boid.dy) * p.matchingFactor;
+  }
+}
+
+function limitSpeed(boid, p) {
+  const speed = Math.sqrt(boid.dx * boid.dx + boid.dy * boid.dy);
+  if (speed > p.speedLimit) {
+    boid.dx = (boid.dx / speed) * p.speedLimit;
+    boid.dy = (boid.dy / speed) * p.speedLimit;
+  }
+}
+
+function drawBoid(ctx, boid, p) {
+  const angle = Math.atan2(boid.dy, boid.dx);
+  ctx.translate(boid.x, boid.y);
+  ctx.rotate(angle);
+  ctx.translate(-boid.x, -boid.y);
+  ctx.fillStyle = "#558cf4";
+  ctx.beginPath();
+  ctx.moveTo(boid.x, boid.y);
+  ctx.lineTo(boid.x - 15, boid.y + 5);
+  ctx.lineTo(boid.x - 15, boid.y - 5);
+  ctx.lineTo(boid.x, boid.y);
+  ctx.fill();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  if (p.drawTrail && boid.history.length > 1) {
+    ctx.strokeStyle = "#558cf466";
+    ctx.beginPath();
+    ctx.moveTo(boid.history[0][0], boid.history[0][1]);
+    for (const point of boid.history) {
+      ctx.lineTo(point[0], point[1]);
+    }
+    ctx.stroke();
+  }
+}
+
+// Handle boid count changes without full reset
+let lastNumBoids = 100;
+
+function animationLoop() {
+  if (paused) {
+    window.requestAnimationFrame(animationLoop);
+    return;
+  }
+
+  const p = getParams();
+
+  // Adjust boid count dynamically
+  if (p.numBoids !== lastNumBoids) {
+    if (p.numBoids > boids.length) {
+      for (let i = boids.length; i < p.numBoids; i++) {
+        boids.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          dx: Math.random() * 10 - 5,
+          dy: Math.random() * 10 - 5,
+          history: [],
+        });
+      }
+    } else if (p.numBoids < boids.length) {
+      boids = boids.slice(0, p.numBoids);
+    }
+    lastNumBoids = p.numBoids;
+  }
+
+  // Update each boid
+  for (let boid of boids) {
+    flyTowardsCenter(boid, p);
+    avoidOthers(boid, p);
+    matchVelocity(boid, p);
+    limitSpeed(boid, p);
+    keepWithinBounds(boid);
+
+    // Apply speed factor to position update
+    boid.x += boid.dx * p.speedFactor;
+    boid.y += boid.dy * p.speedFactor;
+    boid.history.push([boid.x, boid.y]);
+    boid.history = boid.history.slice(-50);
+  }
+
+  // Clear and redraw
+  const ctx = document.getElementById("boids").getContext("2d");
+  ctx.clearRect(0, 0, width, height);
+  for (let boid of boids) {
+    drawBoid(ctx, boid, p);
+  }
+
+  window.requestAnimationFrame(animationLoop);
+}
+
+// Pause button
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+});
+
+// Reset button
+document.getElementById('resetBtn').addEventListener('click', () => {
+  const p = getParams();
+  initBoids(p.numBoids);
+  lastNumBoids = p.numBoids;
+});
+
+window.onload = () => {
+  window.addEventListener("resize", sizeCanvas, false);
+  sizeCanvas();
+  initBoids(100);
+  window.requestAnimationFrame(animationLoop);
+};
+    </script>
+  </body>
+</html>

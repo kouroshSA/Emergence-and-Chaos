@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this repository in your work, please cite it as below."
+title: "Emergence and Chaos"
+type: software
+authors:
+  - family-names: "Salehi-Ashtiani"
+    given-names: "Kourosh"
+repository-code: "https://github.com/kouroshSA/Emergence-and-Chaos"
+url: "https://github.com/kouroshSA/Emergence-and-Chaos"
+date-released: "2026-06-07"
